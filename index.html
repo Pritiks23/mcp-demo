@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MCP Portfolio Demo — Model Context Protocol (Client-only)</title>
+  <title>MCP Demo — Client + Gemini</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
   <style>
@@ -47,9 +47,9 @@
 <body>
   <div class="app">
     <div class="panel">
-      <div class="topbar"><div class="logo"><div class="dot">M</div><div><strong>MCP Demo</strong><div class="small">Client-only showcase</div></div></div><div class="badge">No servers</div></div>
+      <div class="topbar"><div class="logo"><div class="dot">M</div><div><strong>MCP Demo</strong><div class="small">Client + Gemini API</div></div></div><div class="badge">Hybrid</div></div>
       <h1>Models</h1>
-      <p class="lead">Switch between local mock models. Everything runs in your browser — perfect for GitHub Pages.</p>
+      <p class="lead">Switch between mock models or use Gemini API. Runs in your browser with optional API key.</p>
       <div class="model-list" id="modelList"></div>
 
       <div class="sidebar-section">
@@ -65,6 +65,12 @@
         <div class="context-list" id="contextList"></div>
         <div class="footer">Examples: <span class="small">system persona, dataset summary, policy</span></div>
       </div>
+
+      <div class="sidebar-section">
+        <h1>Gemini API Key</h1>
+        <p class="small">Enter your Gemini API key to enable live responses.</p>
+        <input id="geminiKey" type="password" placeholder="Paste API Key here" style="width:100%;padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit">
+      </div>
     </div>
 
     <div class="panel viewport">
@@ -72,7 +78,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <h1 id="title">Interactive MCP Playground</h1>
-            <div class="note">Simulates a Model Context Protocol: observe, think, act messages; adjustable temperature & context window.</div>
+            <div class="note">Simulates MCP (observe → think → act) and supports Gemini API if key is provided.</div>
           </div>
           <div class="row">
             <div class="small">Temp</div>
@@ -93,154 +99,42 @@
       </div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
-        <div class="small">MCP events shown with timestamps. Uses deterministic mock models: 'Echo', 'Assistant', and 'Chain-of-Thought (sim)'.</div>
-        <div class="small">Built for portfolios — drop into a repo as <code>index.html</code> and enable Pages.</div>
+        <div class="small">MCP events shown with timestamps. Mock + Gemini models available.</div>
       </div>
 
     </div>
   </div>
 
   <script>
-    // ---- Mock models: simple deterministic functions, no external API ----
     const models = {
-      "echo-v0": {
-        name: 'Echo Model (v0)',
-        desc: 'Replies by echoing user input back with light formatting.',
-        run: async (prompt, ctx, opts) => {
-          await sleep(220 + Math.random()*80);
-          return `Echoing: "${prompt.trim()}"\n\nContext lines: ${ctx.length}`;
-        }
-      },
-      "assistant-sim": {
-        name: 'Assistant Sim',
-        desc: 'Rule-based assistant that can summarize, extract bullets, or answer simple questions from context.',
-        run: async (prompt, ctx, opts) => {
-          await sleep(320 + Math.random()*140);
-          const low = prompt.toLowerCase();
-          if (low.includes('summarize')){
-            return summarizeContext(ctx, opts);
-          } else if (low.includes('extract')|| low.includes('bullet')){
-            return extractBullets(ctx);
-          } else if (low.includes('persona')){
-            return 'Assistant role: helpful, concise, slightly playful.'
-          }
-          // fallback: combine last context and prompt
-          return `Answer (sim): I saw ${ctx.length} context items. You asked: "${prompt.trim()}"`;
-        }
-      },
-      "cot-sim": {
-        name: 'Chain-of-Thought (demo)',
-        desc: 'Produces a multi-step reasoning trace and conclusion (simulated). Useful to showcase MCP thought/act separation.',
-        run: async (prompt, ctx, opts) => {
-          await sleep(500 + Math.random()*250);
-          const steps = [];
-          steps.push('Observe: read the context and identify facts.');
-          if (ctx.length>0) steps.push('Recall: find relevant lines from context.');
-          steps.push('Plan: outline steps to answer the prompt.');
-          steps.push('Execute: produce a concise answer.');
-          const conclusion = `Conclusion: (sim) For request "${prompt.trim()}", recommended 3 actions.`;
-          return steps.join('\n') + '\n\n' + conclusion;
-        }
-      }
-    }
+      "echo-v0": {name:'Echo Model',desc:'Echoes input',run: async (p,ctx)=>`Echo: ${p}`},
+      "assistant-sim": {name:'Assistant Sim',desc:'Summarizes/extracts',run: async (p,ctx)=>{if(p.toLowerCase().includes('summarize'))return ctx.join(' ').slice(0,100)+'...'; return p;}},
+      "cot-sim": {name:'Chain-of-Thought',desc:'Step-by-step reasoning',run: async (p,ctx)=>`Step1: Observe\nStep2: Think\nStep3: Act\nConclusion: ${p}`},
+      "gemini-live": {name:'Gemini API',desc:'Live Gemini API',run: async (p,ctx)=>{const key=document.getElementById('geminiKey').value.trim(); if(!key)return '❌ No API key'; try{const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+key,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:p}]}]})}); const data=await res.json(); return data?.candidates?.[0]?.content?.parts?.[0]?.text||JSON.stringify(data);}catch(e){return e.message;}}}
+    };
 
-    // ---- Utilities ----
-    function sleep(ms){return new Promise(res=>setTimeout(res,ms))}
-    function now(){return new Date().toLocaleTimeString()}
+    const state={selected:'assistant-sim',context:[]};
+    const modelListEl=document.getElementById('modelList'),chatEl=document.getElementById('chat'),promptEl=document.getElementById('prompt'),ctxText=document.getElementById('ctxText'),contextList=document.getElementById('contextList'),tempEl=document.getElementById('temp'),tempVal=document.getElementById('tempVal');
 
-    // Minimal summarizers for demo
-    function summarizeContext(ctx, opts){
-      if (ctx.length===0) return 'No context provided.';
-      const joined = ctx.join(' ');
-      const words = joined.split(/\s+/).slice(0,60).join(' ');
-      return `Summary (sim): ${words}${joined.split(/\s+/).length>60 ? ' ...':''}`;
-    }
-    function extractBullets(ctx){
-      if (ctx.length===0) return 'No context to extract.';
-      return ctx.map((c,i)=>`- (${i+1}) ${c.slice(0,80)}${c.length>80?'...':''}`).join('\n');
-    }
+    function renderModels(){modelListEl.innerHTML='';Object.keys(models).forEach(k=>{const m=models[k],el=document.createElement('div');el.className='model'+(state.selected===k?' active':'');el.innerHTML=`<strong>${m.name}</strong><div class="meta">${m.desc}</div>`;el.onclick=()=>{state.selected=k;renderModels();logSys(`Switched model: ${m.name}`)};modelListEl.appendChild(el)})}
+    function renderContext(){contextList.innerHTML='';state.context.forEach((c,i)=>{const d=document.createElement('div');d.className='context-item';d.innerHTML=`<div style="display:flex;justify-content:space-between"><div>${c.slice(0,80)}${c.length>80?'...':''}</div><button onclick="removeCtx(${i})">✕</button></div>`;contextList.appendChild(d)})}
+    function removeCtx(i){state.context.splice(i,1);renderContext();logSys('Removed context')}
+    window.removeCtx=removeCtx;
 
-    // ---- MCP-like runtime (client-side) ----
-    const state = {selected:'assistant-sim',context:[]};
-    const modelListEl = document.getElementById('modelList');
-    const chatEl = document.getElementById('chat');
-    const promptEl = document.getElementById('prompt');
-    const ctxText = document.getElementById('ctxText');
-    const contextList = document.getElementById('contextList');
-    const tempEl = document.getElementById('temp');
-    const tempVal = document.getElementById('tempVal');
+    document.getElementById('addCtx').onclick=()=>{const v=ctxText.value.trim();if(!v)return;state.context.unshift(v);ctxText.value='';renderContext();logSys('Added context')};
+    document.getElementById('clearContext').onclick=()=>{state.context=[];renderContext();logSys('Cleared context')};
 
-    function renderModels(){
-      modelListEl.innerHTML = '';
-      Object.keys(models).forEach(key=>{
-        const m = models[key];
-        const el = document.createElement('div');
-        el.className = 'model' + (state.selected===key? ' active':'');
-        el.innerHTML = `<strong>${m.name}</strong><div class="meta">${m.desc}</div>`;
-        el.onclick = ()=>{state.selected=key;renderModels();logSystem(`Switched model -> ${m.name}`)};
-        modelListEl.appendChild(el);
-      })
-    }
-
-    function renderContext(){
-      contextList.innerHTML = '';
-      state.context.forEach((c,i)=>{
-        const d = document.createElement('div');
-        d.className='context-item';
-        d.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:13px">${c.slice(0,80)}${c.length>80?'...':''}</div><div style="display:flex;gap:6px"><button onclick="removeCtx(${i})">✕</button></div></div>`;
-        contextList.appendChild(d);
-      })
-    }
-
-    function removeCtx(i){state.context.splice(i,1);renderContext();logSystem('Removed context item')}
-    window.removeCtx = removeCtx;
-
-    document.getElementById('addCtx').onclick = ()=>{
-      const v = ctxText.value.trim(); if(!v) return; state.context.unshift(v); ctxText.value=''; renderContext(); logSystem('Added context')
-    }
-    document.getElementById('clearContext').onclick = ()=>{state.context=[]; renderContext(); logSystem('Cleared context')}
-
-    function appendMsg(text,who='model'){const m = document.createElement('div');m.className='msg '+(who==='user'?'user':'model');m.innerHTML=`<div style="font-size:11px;color:var(--muted)">${who} • ${now()}</div><div style="margin-top:6px;white-space:pre-wrap">${escapeHtml(text)}</div>`;chatEl.appendChild(m);chatEl.scrollTop = chatEl.scrollHeight}
-    function logSystem(text){const m = document.createElement('div');m.className='msg model';m.style.opacity=0.6;m.innerHTML=`<div style="font-size:11px;color:var(--muted)">system • ${now()}</div><div style="margin-top:6px">${escapeHtml(text)}</div>`;chatEl.appendChild(m);chatEl.scrollTop = chatEl.scrollHeight}
+    function appendMsg(t,w='model'){const m=document.createElement('div');m.className='msg '+(w==='user'?'user':'model');m.innerHTML=`<div style="font-size:11px;color:var(--muted)">${w} • ${new Date().toLocaleTimeString()}</div><div style="margin-top:6px;white-space:pre-wrap">${t}</div>`;chatEl.appendChild(m);chatEl.scrollTop=chatEl.scrollHeight}
+    function logSys(t){const m=document.createElement('div');m.className='msg model';m.style.opacity=0.6;m.innerHTML=`<div style="font-size:11px;color:var(--muted)">system • ${new Date().toLocaleTimeString()}</div><div style="margin-top:6px">${t}</div>`;chatEl.appendChild(m);chatEl.scrollTop=chatEl.scrollHeight}
 
     function escapeHtml(s){return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}
 
-    document.getElementById('send').onclick = async ()=>{
-      const p = promptEl.value.trim(); if(!p) return; appendMsg(p,'user'); promptEl.value='';
-      const model = models[state.selected];
-      logSystem(`MCP: sending 'observe' with ${state.context.length} contexts to ${model.name}`);
-      // simulate observe
-      await sleep(100);
-      logSystem(`MCP: model starts 'think'`);
-      const out = await model.run(p, state.context.slice(0,10), {temp:parseFloat(tempEl.value)});
-      logSystem(`MCP: model 'act'`);
-      appendMsg(out,'model');
-    }
+    document.getElementById('send').onclick=async()=>{const p=promptEl.value.trim();if(!p)return;appendMsg(p,'user');promptEl.value='';const model=models[state.selected];logSys(`Sending to ${model.name}`);const out=await model.run(p,state.context.slice(0,10));appendMsg(out,'model')};
+    document.getElementById('simulateChain').onclick=async()=>{const p=promptEl.value.trim()||'Explain step-by-step';appendMsg(p,'user');const model=models['cot-sim'];logSys('Chain-of-Thought sim');const out=await model.run(p,state.context.slice(0,10));appendMsg(out,'model')};
 
-    document.getElementById('simulateChain').onclick = async ()=>{
-      const p = promptEl.value.trim() || 'Explain step-by-step'; appendMsg(p,'user');
-      const model = models['cot-sim'];
-      logSystem('MCP: starting multi-step reasoning (sim)');
-      // step 1: observe
-      logSystem('MCP EVENT • OBSERVE'); await sleep(120);
-      // step 2: think -> partial
-      logSystem('MCP EVENT • THINK (partial trace)'); appendMsg('(...model thinking—partial trace...)','model'); await sleep(600);
-      // final
-      const out = await model.run(p, state.context.slice(0,10), {});
-      logSystem('MCP EVENT • ACT (conclusion)'); appendMsg(out,'model');
-    }
+    tempEl.oninput=()=>{tempVal.innerText=parseFloat(tempEl.value).toFixed(2)}
 
-    tempEl.oninput = ()=>{tempVal.textContent = parseFloat(tempEl.value).toFixed(2)};
-
-    // initial render
-    renderModels(); renderContext();
-    logSystem('MCP demo ready — add context and try the models.');
-
-    // handy: example starter context
-    state.context.push('Dataset contains user activity logs with columns: viewed, explored, registered, nplay_video.');
-    state.context.push('Persona: Product manager who wants concise suggestions and 3 prioritized items.');
-    renderContext();
-
+    renderModels();renderContext();
   </script>
 </body>
 </html>

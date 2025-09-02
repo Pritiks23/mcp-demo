@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MCP Portfolio Demo — Model Context Protocol (Client-only)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--muted:#98a0b3;--accent:#6ee7b7;--glass: rgba(255,255,255,0.03)}
+    *{box-sizing:border-box;font-family:Inter,system-ui,Arial,sans-serif}
+    body{margin:0;background:linear-gradient(180deg,#061026 0%,#081226 60%);color:#e6eef8;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:28px}
+    .app{width:1100px;max-width:100%;display:grid;grid-template-columns:360px 1fr;gap:20px}
+    .panel{background:var(--card);padding:18px;border-radius:14px;box-shadow:0 6px 30px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
+    h1{margin:0 0 6px;font-size:18px}
+    p.lead{margin:0 0 12px;color:var(--muted);font-size:13px}
+    .model-list{display:flex;flex-direction:column;gap:10px}
+    .model{padding:10px;border-radius:10px;background:var(--glass);cursor:pointer;border:1px solid rgba(255,255,255,0.02)}
+    .model.active{outline:2px solid rgba(110,231,183,0.12);background:linear-gradient(0deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02))}
+    .meta{font-size:12px;color:var(--muted);margin-top:8px}
+    .controls{display:flex;gap:8px;margin-top:12px}
+    button{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 10px;border-radius:8px;color:inherit;cursor:pointer}
+    button.primary{background:linear-gradient(90deg,#0ea5a7,#7c3aed);border:none}
+    .viewport{display:flex;flex-direction:column;height:640px}
+    .chat{flex:1;overflow:auto;padding:16px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));border-radius:12px}
+    .msg{max-width:78%;padding:12px;border-radius:10px;margin-bottom:10px;font-size:14px}
+    .msg.user{background:linear-gradient(90deg,#0ea5a7,#7c3aed);color:#001018;margin-left:auto}
+    .msg.model{background:rgba(255,255,255,0.03)}
+    .input-area{display:flex;gap:10px;margin-top:12px}
+    textarea{flex:1;min-height:64px;background:transparent;border:1px solid rgba(255,255,255,0.04);padding:10px;border-radius:10px;color:inherit;resize:vertical}
+    .sidebar-section{margin-top:14px}
+    .kbd{background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:6px;font-size:12px}
+    .small{font-size:12px;color:var(--muted)}
+    .row{display:flex;gap:8px;align-items:center}
+    .file-input{display:flex;gap:8px}
+    .context-list{max-height:140px;overflow:auto;margin-top:8px;border-radius:8px;padding:8px;background:rgba(255,255,255,0.01);border:1px dashed rgba(255,255,255,0.02)}
+    .context-item{padding:6px;border-radius:6px;font-size:13px;background:rgba(255,255,255,0.02);margin-bottom:6px}
+    .footer{margin-top:8px;font-size:12px;color:var(--muted)}
+    .badge{padding:6px 8px;border-radius:999px;background:rgba(255,255,255,0.02);font-size:12px}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    .logo{display:flex;gap:10px;align-items:center}
+    .logo .dot{width:28px;height:28px;border-radius:8px;background:linear-gradient(90deg,#7c3aed,#0ea5a7);display:flex;align-items:center;justify-content:center;font-weight:700}
+    .note{font-size:13px;color:var(--muted)}
+    a.smalllink{color:var(--accent);text-decoration:none}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="panel">
+      <div class="topbar"><div class="logo"><div class="dot">M</div><div><strong>MCP Demo</strong><div class="small">Client-only showcase</div></div></div><div class="badge">No servers</div></div>
+      <h1>Models</h1>
+      <p class="lead">Switch between local mock models. Everything runs in your browser — perfect for GitHub Pages.</p>
+      <div class="model-list" id="modelList"></div>
+
+      <div class="sidebar-section">
+        <div class="row">
+          <div class="kbd">Context</div>
+          <div style="flex:1"></div>
+          <button id="clearContext">Clear</button>
+        </div>
+        <div class="file-input" style="margin-top:8px">
+          <input id="ctxText" placeholder="Paste a short doc or system prompt" style="flex:1;padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit">
+          <button id="addCtx">Add</button>
+        </div>
+        <div class="context-list" id="contextList"></div>
+        <div class="footer">Examples: <span class="small">system persona, dataset summary, policy</span></div>
+      </div>
+    </div>
+
+    <div class="panel viewport">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h1 id="title">Interactive MCP Playground</h1>
+            <div class="note">Simulates a Model Context Protocol: observe, think, act messages; adjustable temperature & context window.</div>
+          </div>
+          <div class="row">
+            <div class="small">Temp</div>
+            <input id="temp" type="range" min="0" max="1" step="0.05" value="0.3">
+            <div class="kbd" id="tempVal">0.30</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat" id="chat"></div>
+
+      <div class="input-area">
+        <textarea id="prompt" placeholder="Write a user message or command (e.g., 'Summarize context')"></textarea>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="primary" id="send">Send</button>
+          <button id="simulateChain">Run Reasoning Chain</button>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+        <div class="small">MCP events shown with timestamps. Uses deterministic mock models: 'Echo', 'Assistant', and 'Chain-of-Thought (sim)'.</div>
+        <div class="small">Built for portfolios — drop into a repo as <code>index.html</code> and enable Pages.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ---- Mock models: simple deterministic functions, no external API ----
+    const models = {
+      "echo-v0": {
+        name: 'Echo Model (v0)',
+        desc: 'Replies by echoing user input back with light formatting.',
+        run: async (prompt, ctx, opts) => {
+          await sleep(220 + Math.random()*80);
+          return `Echoing: "${prompt.trim()}"\n\nContext lines: ${ctx.length}`;
+        }
+      },
+      "assistant-sim": {
+        name: 'Assistant Sim',
+        desc: 'Rule-based assistant that can summarize, extract bullets, or answer simple questions from context.',
+        run: async (prompt, ctx, opts) => {
+          await sleep(320 + Math.random()*140);
+          const low = prompt.toLowerCase();
+          if (low.includes('summarize')){
+            return summarizeContext(ctx, opts);
+          } else if (low.includes('extract')|| low.includes('bullet')){
+            return extractBullets(ctx);
+          } else if (low.includes('persona')){
+            return 'Assistant role: helpful, concise, slightly playful.'
+          }
+          // fallback: combine last context and prompt
+          return `Answer (sim): I saw ${ctx.length} context items. You asked: "${prompt.trim()}"`;
+        }
+      },
+      "cot-sim": {
+        name: 'Chain-of-Thought (demo)',
+        desc: 'Produces a multi-step reasoning trace and conclusion (simulated). Useful to showcase MCP thought/act separation.',
+        run: async (prompt, ctx, opts) => {
+          await sleep(500 + Math.random()*250);
+          const steps = [];
+          steps.push('Observe: read the context and identify facts.');
+          if (ctx.length>0) steps.push('Recall: find relevant lines from context.');
+          steps.push('Plan: outline steps to answer the prompt.');
+          steps.push('Execute: produce a concise answer.');
+          const conclusion = `Conclusion: (sim) For request "${prompt.trim()}", recommended 3 actions.`;
+          return steps.join('\n') + '\n\n' + conclusion;
+        }
+      }
+    }
+
+    // ---- Utilities ----
+    function sleep(ms){return new Promise(res=>setTimeout(res,ms))}
+    function now(){return new Date().toLocaleTimeString()}
+
+    // Minimal summarizers for demo
+    function summarizeContext(ctx, opts){
+      if (ctx.length===0) return 'No context provided.';
+      const joined = ctx.join(' ');
+      const words = joined.split(/\s+/).slice(0,60).join(' ');
+      return `Summary (sim): ${words}${joined.split(/\s+/).length>60 ? ' ...':''}`;
+    }
+    function extractBullets(ctx){
+      if (ctx.length===0) return 'No context to extract.';
+      return ctx.map((c,i)=>`- (${i+1}) ${c.slice(0,80)}${c.length>80?'...':''}`).join('\n');
+    }
+
+    // ---- MCP-like runtime (client-side) ----
+    const state = {selected:'assistant-sim',context:[]};
+    const modelListEl = document.getElementById('modelList');
+    const chatEl = document.getElementById('chat');
+    const promptEl = document.getElementById('prompt');
+    const ctxText = document.getElementById('ctxText');
+    const contextList = document.getElementById('contextList');
+    const tempEl = document.getElementById('temp');
+    const tempVal = document.getElementById('tempVal');
+
+    function renderModels(){
+      modelListEl.innerHTML = '';
+      Object.keys(models).forEach(key=>{
+        const m = models[key];
+        const el = document.createElement('div');
+        el.className = 'model' + (state.selected===key? ' active':'');
+        el.innerHTML = `<strong>${m.name}</strong><div class="meta">${m.desc}</div>`;
+        el.onclick = ()=>{state.selected=key;renderModels();logSystem(`Switched model -> ${m.name}`)};
+        modelListEl.appendChild(el);
+      })
+    }
+
+    function renderContext(){
+      contextList.innerHTML = '';
+      state.context.forEach((c,i)=>{
+        const d = document.createElement('div');
+        d.className='context-item';
+        d.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-size:13px">${c.slice(0,80)}${c.length>80?'...':''}</div><div style="display:flex;gap:6px"><button onclick="removeCtx(${i})">✕</button></div></div>`;
+        contextList.appendChild(d);
+      })
+    }
+
+    function removeCtx(i){state.context.splice(i,1);renderContext();logSystem('Removed context item')}
+    window.removeCtx = removeCtx;
+
+    document.getElementById('addCtx').onclick = ()=>{
+      const v = ctxText.value.trim(); if(!v) return; state.context.unshift(v); ctxText.value=''; renderContext(); logSystem('Added context')
+    }
+    document.getElementById('clearContext').onclick = ()=>{state.context=[]; renderContext(); logSystem('Cleared context')}
+
+    function appendMsg(text,who='model'){const m = document.createElement('div');m.className='msg '+(who==='user'?'user':'model');m.innerHTML=`<div style="font-size:11px;color:var(--muted)">${who} • ${now()}</div><div style="margin-top:6px;white-space:pre-wrap">${escapeHtml(text)}</div>`;chatEl.appendChild(m);chatEl.scrollTop = chatEl.scrollHeight}
+    function logSystem(text){const m = document.createElement('div');m.className='msg model';m.style.opacity=0.6;m.innerHTML=`<div style="font-size:11px;color:var(--muted)">system • ${now()}</div><div style="margin-top:6px">${escapeHtml(text)}</div>`;chatEl.appendChild(m);chatEl.scrollTop = chatEl.scrollHeight}
+
+    function escapeHtml(s){return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}
+
+    document.getElementById('send').onclick = async ()=>{
+      const p = promptEl.value.trim(); if(!p) return; appendMsg(p,'user'); promptEl.value='';
+      const model = models[state.selected];
+      logSystem(`MCP: sending 'observe' with ${state.context.length} contexts to ${model.name}`);
+      // simulate observe
+      await sleep(100);
+      logSystem(`MCP: model starts 'think'`);
+      const out = await model.run(p, state.context.slice(0,10), {temp:parseFloat(tempEl.value)});
+      logSystem(`MCP: model 'act'`);
+      appendMsg(out,'model');
+    }
+
+    document.getElementById('simulateChain').onclick = async ()=>{
+      const p = promptEl.value.trim() || 'Explain step-by-step'; appendMsg(p,'user');
+      const model = models['cot-sim'];
+      logSystem('MCP: starting multi-step reasoning (sim)');
+      // step 1: observe
+      logSystem('MCP EVENT • OBSERVE'); await sleep(120);
+      // step 2: think -> partial
+      logSystem('MCP EVENT • THINK (partial trace)'); appendMsg('(...model thinking—partial trace...)','model'); await sleep(600);
+      // final
+      const out = await model.run(p, state.context.slice(0,10), {});
+      logSystem('MCP EVENT • ACT (conclusion)'); appendMsg(out,'model');
+    }
+
+    tempEl.oninput = ()=>{tempVal.textContent = parseFloat(tempEl.value).toFixed(2)};
+
+    // initial render
+    renderModels(); renderContext();
+    logSystem('MCP demo ready — add context and try the models.');
+
+    // handy: example starter context
+    state.context.push('Dataset contains user activity logs with columns: viewed, explored, registered, nplay_video.');
+    state.context.push('Persona: Product manager who wants concise suggestions and 3 prioritized items.');
+    renderContext();
+
+  </script>
+</body>
+</html>
